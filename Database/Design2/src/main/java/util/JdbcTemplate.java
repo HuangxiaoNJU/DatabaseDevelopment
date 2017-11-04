@@ -59,10 +59,17 @@ public class JdbcTemplate {
         }
     }
 
-    public static void release(Statement statement, Connection connection) {
+    public static void releaseConnection(Connection connection) {
+        try {
+            connection.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void releaseStatement(Statement statement) {
         try {
             statement.close();
-            connection.close();
         } catch (SQLException e) {
             e.printStackTrace();
         }

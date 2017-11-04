@@ -11,9 +11,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.*;
 
+@SuppressWarnings({"SqlDialectInspection", "SqlNoDataSourceInspection", "ConstantConditions"})
 public class Init {
 
     private static final String ALLOCATION_FILE_NAME = "分配方案.xls";
@@ -54,36 +57,32 @@ public class Init {
             e.printStackTrace();
             JdbcTemplate.rollback(connection);
         } finally {
-            JdbcTemplate.release(statement, connection);
+            JdbcTemplate.releaseStatement(statement);
+            JdbcTemplate.releaseConnection(connection);
         }
     }
 
     /**
-     * 获取excel表中每行学生信息写入数据库的SQL语句
-     * @param row   row
-     * @return      sql
+     * 插入学生数据
+     * PreparedStatement设置参数
      */
-    private String getInsertStudentSQLByRow(Row row) {
-        String sql = "INSERT INTO student VALUES('";
-        sql += row.getCell(1).getStringCellValue() + "','";
-        sql += row.getCell(2).getStringCellValue() + "','";
-        sql += row.getCell(3).getStringCellValue() + "','";
-        sql += row.getCell(0).getStringCellValue() + "','";
-        sql += row.getCell(5).getStringCellValue() + "');";
-        return sql;
+    private void prepareStudentParam(Row row, PreparedStatement statement) throws SQLException {
+        statement.setString(1, row.getCell(1).getStringCellValue());
+        statement.setString(2, row.getCell(2).getStringCellValue());
+        statement.setString(3, row.getCell(3).getStringCellValue());
+        statement.setString(4, row.getCell(0).getStringCellValue());
+        statement.setString(5, row.getCell(5).getStringCellValue());
     }
 
     /**
-     * 获取宿舍信息写入数据库的SQL语句
-     * @return      sql
+     * 插入宿舍数据
+     * PreparedStatement设置参数
      */
-    private String getInsertDormitorySQL(Row row, String phoneNumber) {
-        String sql = "INSERT INTO dormitory VALUES('";
-        sql += row.getCell(5).getStringCellValue() + "','";
-        sql += row.getCell(4).getStringCellValue() + "','";
-        sql += phoneNumber + "','";
-        sql += row.getCell(6).getNumericCellValue() + "');";
-        return sql;
+    private void preparedDormitoryParam(Row row, String phoneNumber, PreparedStatement statement) throws SQLException {
+        statement.setString(1, row.getCell(5).getStringCellValue());
+        statement.setString(2, row.getCell(4).getStringCellValue());
+        statement.setString(3, String.valueOf(row.getCell(6).getNumericCellValue()));
+        statement.setString(4, phoneNumber);
     }
 
     private Map<String, String> getDormitoryPhoneNumber() throws IOException {
@@ -114,28 +113,36 @@ public class Init {
         rowIterator.next();
         Set<String> dormitorySet = new HashSet<>();
         Connection connection = null;
-        Statement statement = null;
+        PreparedStatement studentStatement = null;
+        PreparedStatement dormitoryStatement = null;
         try {
             connection = JdbcTemplate.getConnection();
             JdbcTemplate.beginTx(connection);
-            statement = connection.createStatement();
+            studentStatement = connection.prepareStatement(
+                    "INSERT INTO student(student_number, name, gender, department, dormitory_name) VALUES (?,?,?,?,?)");
+            dormitoryStatement = connection.prepareStatement(
+                    "INSERT INTO dormitory(dormitory_name, campus, standard_cost, phone_number) VALUES (?,?,?,?)");
             while (rowIterator.hasNext()) {
                 Row row = rowIterator.next();
-                statement.addBatch(getInsertStudentSQLByRow(row));
+                prepareStudentParam(row, studentStatement);
+                studentStatement.addBatch();
                 String dormitoryName = row.getCell(5).getStringCellValue();
                 if (!dormitorySet.contains(dormitoryName)) {
-                    statement.addBatch(getInsertDormitorySQL(row, dormitoryPhoneNumber.get(dormitoryName)));
+                    preparedDormitoryParam(row, dormitoryPhoneNumber.get(dormitoryName), dormitoryStatement);
+                    dormitoryStatement.addBatch();
                     dormitorySet.add(dormitoryName);
                 }
             }
-            statement.executeBatch();
-            statement.clearBatch();
+            studentStatement.executeBatch();
+            dormitoryStatement.executeBatch();
             JdbcTemplate.commit(connection);
         } catch (Exception e) {
             e.printStackTrace();
             JdbcTemplate.rollback(connection);
         } finally {
-            JdbcTemplate.release(statement, connection);
+            JdbcTemplate.releaseStatement(studentStatement);
+            JdbcTemplate.releaseStatement(dormitoryStatement);
+            JdbcTemplate.releaseConnection(connection);
         }
 
         stream.close();
