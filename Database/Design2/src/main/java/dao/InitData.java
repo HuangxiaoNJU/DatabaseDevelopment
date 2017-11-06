@@ -8,14 +8,37 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.text.ParseException;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.HashSet;
+import java.util.Set;
 
 @SuppressWarnings({"SqlDialectInspection", "SqlNoDataSourceInspection", "ConstantConditions"})
 public class InitData {
 
+    private static InitData initData;
+
+    private InitData() {}
+
+    public static InitData getInstance() {
+        if (initData == null) {
+            initData = new InitData();
+        }
+        return initData;
+    }
+
     private static final String USER_FILE_NAME = "user.txt";
     private static final String BIKE_FILE_NAME = "bike.txt";
     private static final String RECORD_FILE_NAME = "record.txt";
+
+    private static final int BATCH_SIZE = 10000;
+
+    private static final DateTimeFormatter DATE_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM/dd-HH:mm:ss");
+    private static final DateTimeFormatter STANDARD_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     /**
      * 初始化共享单车数据
@@ -45,12 +68,14 @@ public class InitData {
         }
     }
 
+
     private void prepareUserParam(String line, PreparedStatement statement) throws SQLException {
         String[] info = line.split(";");
         statement.setInt(1, Integer.valueOf(info[0]));
         statement.setString(2, info[1]);
         statement.setString(3, info[2]);
         statement.setDouble(4, Double.valueOf(info[3]));
+        statement.addBatch();
     }
 
     /**
@@ -71,9 +96,8 @@ public class InitData {
             int i = 0;
             while ((line = br.readLine()) != null) {
                 prepareUserParam(line, preparedStatement);
-                preparedStatement.addBatch();
                 i++;
-                if (i % 10000 == 0) {
+                if (i % BATCH_SIZE == 0) {
                     preparedStatement.executeBatch();
                     preparedStatement.clearBatch();
                 }
@@ -89,8 +113,50 @@ public class InitData {
         }
     }
 
-    private void prepareRecordParam(String line, PreparedStatement statement) {
-        String[] info = line.split()
+    private Set<Integer> balanceNotEnoughUserIdSet = new HashSet<>();
+
+    private void prepareRecordParam(String line, PreparedStatement insertRecordStmt, PreparedStatement selectBalanceStmt, PreparedStatement updateUserStmt)
+            throws SQLException, ParseException {
+        String[] info = line.split(";");
+        int userId = Integer.valueOf(info[0]);
+        if (balanceNotEnoughUserIdSet.contains(userId)) {
+            return;
+        }
+
+        LocalDateTime departTime = LocalDateTime.parse(info[3], DATE_TIME_FORMAT);
+        LocalDateTime arriveTime = LocalDateTime.parse(info[5], DATE_TIME_FORMAT);
+        // 计算骑车费用
+        double cost = Double.min(Duration.between(departTime, arriveTime).toMinutes() / 30 + 1.0, 4.0);
+
+        // 计算骑车后用户余额
+        selectBalanceStmt.setInt(1, userId);
+        ResultSet resultSet = selectBalanceStmt.executeQuery();
+        double newBalance;
+        if (resultSet.next()) {
+            newBalance = resultSet.getDouble("balance");
+        } else {
+            System.out.println(userId + "\t不存在");
+            throw new SQLException();
+        }
+
+        if (newBalance <= 0) {
+            balanceNotEnoughUserIdSet.add(userId);
+            System.out.println(userId + "\t余额不足");
+        }
+        // 更新用户余额
+        updateUserStmt.setDouble(1, newBalance);
+        updateUserStmt.setInt(2, userId);
+        updateUserStmt.addBatch();
+
+        // 插入骑车记录
+        insertRecordStmt.setInt(1, Integer.valueOf(info[0]));
+        insertRecordStmt.setInt(2, Integer.valueOf(info[1]));
+        insertRecordStmt.setString(3, info[2]);
+        insertRecordStmt.setString(4, departTime.format(STANDARD_FORMAT));
+        insertRecordStmt.setString(5, info[4]);
+        insertRecordStmt.setString(6, arriveTime.format(STANDARD_FORMAT));
+        insertRecordStmt.setDouble(7, cost);
+        insertRecordStmt.addBatch();
     }
 
     /**
@@ -100,25 +166,49 @@ public class InitData {
         InputStream stream = getClass().getClassLoader().getResourceAsStream(RECORD_FILE_NAME);
 
         Connection connection = null;
-        PreparedStatement preparedStatement = null;
+        PreparedStatement insertRecordStmt = null;
+        PreparedStatement updateUserStmt = null;
+        PreparedStatement selectBalanceStmt = null;
         try(BufferedReader br = new BufferedReader(new InputStreamReader(stream))) {
-            // TODO
+            connection = JdbcTemplate.getConnection();
+            JdbcTemplate.beginTx(connection);
+            insertRecordStmt = connection.prepareStatement(
+                    "INSERT INTO record" +
+                         "(user_id, bike_id, departure, depart_time, destination, arrive_time, cost) " +
+                         "VALUES (?,?,?,?,?,?,?)");
+            updateUserStmt = connection.prepareStatement(
+                    "UPDATE user SET balance=? WHERE id=?");
+            selectBalanceStmt = connection.prepareStatement(
+                    "SELECT balance FROM user WHERE id=?");
+            int i = 0;
             String line;
             while ((line = br.readLine()) != null) {
-                String[] info = line.split(";");
+                i++;
+                prepareRecordParam(line, insertRecordStmt, selectBalanceStmt, updateUserStmt);
+                if (i % BATCH_SIZE == 0) {
+                    insertRecordStmt.executeBatch();
+                    insertRecordStmt.clearBatch();
+                    updateUserStmt.executeBatch();
+                    updateUserStmt.clearBatch();
+                }
             }
+            insertRecordStmt.executeBatch();
+            updateUserStmt.executeBatch();
+            JdbcTemplate.commit(connection);
         } catch (Exception e) {
             e.printStackTrace();
             JdbcTemplate.rollback(connection);
         } finally {
-            JdbcTemplate.releaseStatement(preparedStatement);
+            JdbcTemplate.releaseStatement(insertRecordStmt);
+            JdbcTemplate.releaseStatement(updateUserStmt);
+            JdbcTemplate.releaseStatement(selectBalanceStmt);
             JdbcTemplate.releaseConnection(connection);
         }
     }
 
     public static void main(String[] args) throws IOException {
         long start = System.currentTimeMillis();
-        new InitData().initBikeData();
+        new InitData().initRecordData();
         System.out.println("插入时间：" + (System.currentTimeMillis() - start) + "ms");
     }
 

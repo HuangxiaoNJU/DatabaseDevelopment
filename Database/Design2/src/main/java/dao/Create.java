@@ -74,6 +74,7 @@ public class Create {
                     "depart_time    datetime    NOT NULL," +
                     "destination    varchar(16) NOT NULL," +
                     "arrive_time    datetime    NOT NULL," +
+                    "cost           double      NOT NULL," +
                     "PRIMARY KEY    (id)" +
                 ")";
         createTable(sql);
