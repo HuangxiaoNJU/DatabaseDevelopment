@@ -143,9 +143,8 @@ public class Init {
             JdbcTemplate.releaseStatement(studentStatement);
             JdbcTemplate.releaseStatement(dormitoryStatement);
             JdbcTemplate.releaseConnection(connection);
+            stream.close();
         }
-
-        stream.close();
     }
 
     public static void main(String[] args) throws IOException {

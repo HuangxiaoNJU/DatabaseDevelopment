@@ -6,7 +6,9 @@ public class Main {
 
     public static void main(String[] args) {
         Create create = Create.getInstance();
-        create.createUserTable();
+//        create.createUserTable();
+//        create.createBikeTable();
+        create.createRecordTable();
     }
 
 }

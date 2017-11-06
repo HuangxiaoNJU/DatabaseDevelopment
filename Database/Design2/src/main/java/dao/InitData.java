@@ -4,6 +4,7 @@ import util.JdbcTemplate;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -19,8 +20,29 @@ public class InitData {
     /**
      * 初始化共享单车数据
      */
-    public void initBikeData() {
-        
+    public void initBikeData() throws IOException {
+        InputStream stream = getClass().getClassLoader().getResourceAsStream(BIKE_FILE_NAME);
+
+        Connection connection = null;
+        PreparedStatement preparedStatement = null;
+        try(BufferedReader br = new BufferedReader(new InputStreamReader(stream))) {
+            connection = JdbcTemplate.getConnection();
+            JdbcTemplate.beginTx(connection);
+            preparedStatement = connection.prepareStatement("INSERT INTO bike VALUES(?)");
+            String line;
+            while ((line = br.readLine()) != null) {
+                preparedStatement.setInt(1, Integer.valueOf(line));
+                preparedStatement.addBatch();
+            }
+            preparedStatement.executeBatch();
+            JdbcTemplate.commit(connection);
+        } catch (Exception e) {
+            e.printStackTrace();
+            JdbcTemplate.rollback(connection);
+        } finally {
+            JdbcTemplate.releaseStatement(preparedStatement);
+            JdbcTemplate.releaseConnection(connection);
+        }
     }
 
     private void prepareUserParam(String line, PreparedStatement statement) throws SQLException {
@@ -35,12 +57,11 @@ public class InitData {
      * 初始化用户数据
      */
     public void initUserData() throws IOException {
-        BufferedReader br = new BufferedReader(
-                new InputStreamReader(getClass().getClassLoader().getResourceAsStream(USER_FILE_NAME)));
+        InputStream stream = getClass().getClassLoader().getResourceAsStream(USER_FILE_NAME);
 
         Connection connection = null;
         PreparedStatement preparedStatement = null;
-        try {
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(stream))) {
             connection = JdbcTemplate.getConnection();
             JdbcTemplate.beginTx(connection);
             preparedStatement = connection.prepareStatement(
@@ -66,12 +87,38 @@ public class InitData {
             JdbcTemplate.releaseStatement(preparedStatement);
             JdbcTemplate.releaseConnection(connection);
         }
-        br.close();
+    }
+
+    private void prepareRecordParam(String line, PreparedStatement statement) {
+        String[] info = line.split()
+    }
+
+    /**
+     * 初始化记录数据
+     */
+    public void initRecordData() throws IOException {
+        InputStream stream = getClass().getClassLoader().getResourceAsStream(RECORD_FILE_NAME);
+
+        Connection connection = null;
+        PreparedStatement preparedStatement = null;
+        try(BufferedReader br = new BufferedReader(new InputStreamReader(stream))) {
+            // TODO
+            String line;
+            while ((line = br.readLine()) != null) {
+                String[] info = line.split(";");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            JdbcTemplate.rollback(connection);
+        } finally {
+            JdbcTemplate.releaseStatement(preparedStatement);
+            JdbcTemplate.releaseConnection(connection);
+        }
     }
 
     public static void main(String[] args) throws IOException {
         long start = System.currentTimeMillis();
-        new InitData().initUserData();
+        new InitData().initBikeData();
         System.out.println("插入时间：" + (System.currentTimeMillis() - start) + "ms");
     }
 
