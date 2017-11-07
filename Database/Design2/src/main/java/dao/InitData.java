@@ -133,7 +133,7 @@ public class InitData {
         ResultSet resultSet = selectBalanceStmt.executeQuery();
         double newBalance;
         if (resultSet.next()) {
-            newBalance = resultSet.getDouble("balance");
+            newBalance = resultSet.getDouble("balance") - cost;
         } else {
             System.out.println(userId + "\t不存在");
             throw new SQLException();
@@ -206,10 +206,81 @@ public class InitData {
         }
     }
 
-    public static void main(String[] args) throws IOException {
-        long start = System.currentTimeMillis();
-        new InitData().initRecordData();
-        System.out.println("插入时间：" + (System.currentTimeMillis() - start) + "ms");
+    /**
+     * 添加用户住址
+     */
+    public void addUserHome() {
+        Connection connection = null;
+        PreparedStatement selectStmt = null;
+        PreparedStatement updateStmt = null;
+        try {
+            connection = JdbcTemplate.getConnection();
+            JdbcTemplate.beginTx(connection);
+            updateStmt = connection.prepareStatement(
+                    "UPDATE user SET home=? WHERE id=?");
+            selectStmt = connection.prepareStatement(
+                    "SELECT user_id, destination FROM " +
+                            "(SELECT user_id, destination, count(*) as times " +
+                            "FROM record " +
+                            "WHERE date_format(arrive_time, '%H') between 18 and 24 " +
+                            "GROUP BY user_id, destination " +
+                            "order by times desc) t " +
+                         "group by user_id");
+            ResultSet resultSet = selectStmt.executeQuery();
+            while (resultSet.next()) {
+                int userId = resultSet.getInt("user_id");
+                String home = resultSet.getString("destination");
+                updateStmt.setString(1, home);
+                updateStmt.setInt(2, userId);
+                updateStmt.addBatch();
+            }
+            updateStmt.executeBatch();
+            JdbcTemplate.commit(connection);
+        } catch (Exception e) {
+            e.printStackTrace();
+            JdbcTemplate.rollback(connection);
+        } finally {
+            JdbcTemplate.releaseStatement(selectStmt);
+            JdbcTemplate.releaseStatement(updateStmt);
+            JdbcTemplate.releaseConnection(connection);
+        }
+    }
+
+    /**
+     * 添加repair数据
+     */
+    public void addBikeRepair() {
+        Connection connection = null;
+        PreparedStatement insertStmt = null;
+        PreparedStatement selectStmt = null;
+        try {
+            connection = JdbcTemplate.getConnection();
+            JdbcTemplate.beginTx(connection);
+            selectStmt = connection.prepareStatement(
+                    "select r.bike_id, r.destination from " +
+                            "(select bike_id, max(arrive_time) as last_time " +
+                            "from record " +
+                            "group by bike_id, date_format(arrive_time, '%Y-%m') " +
+                            "having sum(minute(arrive_time-depart_time)) > 200 * 60) t, record r " +
+                          "where r.bike_id = t.bike_id and t.last_time = r.arrive_time");
+            insertStmt = connection.prepareStatement(
+                    "INSERT INTO repair(bike_id, last_location) VALUES(?,?)");
+            ResultSet resultSet = selectStmt.executeQuery();
+            while (resultSet.next()) {
+                insertStmt.setInt(1, resultSet.getInt("bike_id"));
+                insertStmt.setString(2, resultSet.getString("destination"));
+                insertStmt.addBatch();
+            }
+            insertStmt.executeBatch();
+            JdbcTemplate.commit(connection);
+        } catch (Exception e) {
+            e.printStackTrace();
+            JdbcTemplate.rollback(connection);
+        } finally {
+            JdbcTemplate.releaseStatement(selectStmt);
+            JdbcTemplate.releaseStatement(insertStmt);
+            JdbcTemplate.releaseConnection(connection);
+        }
     }
 
 }

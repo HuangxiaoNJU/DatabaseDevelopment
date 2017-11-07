@@ -47,6 +47,7 @@ public class Create {
                     "name           varchar(16) NOT NULL," +
                     "phone_number   varchar(11) NOT NULL," +
                     "balance        double      NOT NULL," +
+                    "home           varchar(11) DEFAULT NULL," +
                     "PRIMARY KEY    (id)" +
                 ")";
         createTable(sql);
@@ -79,5 +80,26 @@ public class Create {
                 ")";
         createTable(sql);
     }
+
+    public void createRepairTable() {
+        String sql =
+                "CREATE TABLE IF NOT EXISTS repair (" +
+                    "id             int(11)     unsigned NOT NULL auto_increment," +
+                    "bike_id        int(11)     unsigned NOT NULL," +
+                    "last_location  varchar(16) NOT NULL," +
+                    "PRIMARY KEY (id)" +
+                ")";
+        createTable(sql);
+    }
+
+//    public void createView() {
+//        String sql =
+//                "CREATE VIEW user_destination(user_id, destination, times) AS " +
+//                    "SELECT user_id, destination, count(*) " +
+//                    "FROM record " +
+//                    "WHERE date_format(arrive_time, '%H') between 18 and 24 " +
+//                    "GROUP BY user_id, destination";
+//        createTable(sql);
+//    }
 
 }

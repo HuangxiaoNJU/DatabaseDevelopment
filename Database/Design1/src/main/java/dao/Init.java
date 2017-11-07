@@ -19,6 +19,17 @@ import java.util.*;
 @SuppressWarnings({"SqlDialectInspection", "SqlNoDataSourceInspection", "ConstantConditions"})
 public class Init {
 
+    private static Init init;
+
+    public static Init getInstance() {
+        if (init == null) {
+            init = new Init();
+        }
+        return init;
+    }
+
+    private Init() {}
+
     private static final String ALLOCATION_FILE_NAME = "分配方案.xls";
     private static final String PHONE_NUMBER_FILE_NAME = "电话.txt";
 
@@ -102,7 +113,7 @@ public class Init {
     /**
      * 初始化数据
      */
-    private void initData() throws IOException {
+    public void initData() throws IOException {
         // 获取宿舍楼对应电话
         Map<String, String> dormitoryPhoneNumber = getDormitoryPhoneNumber();
         InputStream stream = getClass().getClassLoader().getResourceAsStream(ALLOCATION_FILE_NAME);
@@ -147,14 +158,5 @@ public class Init {
         }
     }
 
-    public static void main(String[] args) throws IOException {
-        Init init = new Init();
-        long start = System.currentTimeMillis();
-        init.createTable();
-        System.out.println("建表时间：\t" + (System.currentTimeMillis() - start) / 1000.0 + "s");
-        start = System.currentTimeMillis();
-        init.initData();
-        System.out.println("插入数据时间：" + (System.currentTimeMillis() - start) / 1000.0 + "s");
-    }
 
 }
