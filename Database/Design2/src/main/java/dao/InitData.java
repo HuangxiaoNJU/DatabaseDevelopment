@@ -139,10 +139,10 @@ public class InitData {
             throw new SQLException();
         }
 
-        if (newBalance <= 0) {
-            balanceNotEnoughUserIdSet.add(userId);
-            System.out.println(userId + "\t余额不足");
-        }
+//        if (newBalance <= 0) {
+//            balanceNotEnoughUserIdSet.add(userId);
+//            System.out.println(userId + "\t余额不足");
+//        }
         // 更新用户余额
         updateUserStmt.setDouble(1, newBalance);
         updateUserStmt.setInt(2, userId);
